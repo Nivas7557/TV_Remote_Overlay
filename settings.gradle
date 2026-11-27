@@ -1,0 +1,19 @@
+// Important instructions:
+// - Configure plugin repositories and include the :app module for the TV Remote Simulator project.
+
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "TV_Remote_Overlay"
+include ':app'
