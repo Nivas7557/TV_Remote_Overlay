@@ -1,0 +1,142 @@
+# Important instructions:
+# - Automatically build the standalone TV Remote Simulator debug APK on manual dispatch.
+# - Reuse a persistent debug keystore in private storage so every update installs in-place without uninstalling.
+# - Rotate recent APKs cleanly in the private storage repo without history bloat.
+
+name: TV Remote Simulator APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Restore persistent debug.keystore from private repo so every build shares one signature.
+      - name: Restore or Initialize Persistent Debug Keystore
+        env:
+          PAT_TOKEN: ${{ secrets.TESTER_REPO_TOKEN }}
+          PRIVATE_REPO: 'Nivas7557/My_Generated_Apks'
+          PRIVATE_BRANCH: 'main'
+        run: |
+          mkdir -p ~/.android _signing_sync
+          HOST="github.com"
+          REPO_URL="https://x-access-token:${PAT_TOKEN}@${HOST}/${PRIVATE_REPO}.git"
+          if git ls-remote --exit-code --heads "$REPO_URL" "$PRIVATE_BRANCH" >/dev/null 2>&1; then
+            git clone --depth 1 --branch "$PRIVATE_BRANCH" "$REPO_URL" _signing_sync
+          else
+            cd _signing_sync && git init && git remote add origin "$REPO_URL" && cd ..
+          fi
+
+          if [ -s _signing_sync/_signing/tv_remote_sim_debug.keystore ]; then
+            cp _signing_sync/_signing/tv_remote_sim_debug.keystore ~/.android/debug.keystore
+          else
+            keytool -genkey -v -keystore ~/.android/debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=TVRemoteSim,O=Android,C=IN"
+            mkdir -p _signing_sync/_signing
+            cp ~/.android/debug.keystore _signing_sync/_signing/tv_remote_sim_debug.keystore
+            cd _signing_sync
+            git checkout -B "$PRIVATE_BRANCH"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.${HOST}"
+            git add _signing/tv_remote_sim_debug.keystore
+            git commit -m "chore: store persistent debug signing keystore for TV Remote Simulator"
+            git push -f origin "$PRIVATE_BRANCH"
+            cd ..
+          fi
+          rm -rf _signing_sync
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: '8.9'
+
+      - name: Get IST Time and Date
+        id: timestamp
+        run: |
+          STAMP=$(TZ='Asia/Kolkata' date +'%I-%M_%p_%d-%m')
+          echo "dt=$STAMP" >> $GITHUB_OUTPUT
+
+      - name: Build debug APK
+        run: gradle assembleDebug --build-cache --parallel
+
+      - name: Verify and Parse Generated APK
+        run: |
+          APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+          if [ ! -s "$APK_PATH" ]; then
+            echo "::error::Generated APK is missing or empty!"
+            exit 1
+          fi
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -name "aapt2" | sort -V | tail -n 1)
+          if [ -n "$AAPT2" ]; then
+            "$AAPT2" dump badging "$APK_PATH" > /dev/null
+          fi
+
+      - name: Rotate and Push APK to Private Storage Repo
+        env:
+          MAX_BUILDS: 5
+          PAT_TOKEN: ${{ secrets.TESTER_REPO_TOKEN }}
+          PRIVATE_REPO: 'Nivas7557/My_Generated_Apks'
+          PRIVATE_BRANCH: 'main'
+          DT: ${{ steps.timestamp.outputs.dt }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          SAFE_BRANCH=$(echo "$BRANCH_NAME" | tr '/' '_')
+          TARGET_FOLDER="${REPO_NAME}_${SAFE_BRANCH}"
+          HOST="github.com"
+          REPO_URL="https://x-access-token:${PAT_TOKEN}@${HOST}/${PRIVATE_REPO}.git"
+
+          if git ls-remote --exit-code --heads "$REPO_URL" "$PRIVATE_BRANCH" >/dev/null 2>&1; then
+            git clone --depth 1 --branch "$PRIVATE_BRANCH" "$REPO_URL" private_apk_repo
+            cd private_apk_repo
+          else
+            mkdir private_apk_repo && cd private_apk_repo
+            git init && git remote add origin "$REPO_URL"
+          fi
+
+          mkdir -p "$TARGET_FOLDER"
+          cd "$TARGET_FOLDER"
+
+          OLDEST=$((MAX_BUILDS - 1))
+          for f in TV_Remote_Sim_old_*.apk; do
+            [ -e "$f" ] || continue
+            num=$(echo "$f" | sed -n 's/^TV_Remote_Sim_old_\([0-9]\+\)_.*\.apk$/\1/p')
+            if [ -n "$num" ] && [ "$num" -ge "$OLDEST" ]; then rm -f "$f"; fi
+          done
+          for ((i=OLDEST-1; i>=1; i--)); do
+            next=$((i + 1))
+            for f in TV_Remote_Sim_old_${i}_*.apk; do
+              [ -e "$f" ] && mv "$f" "${f/TV_Remote_Sim_old_${i}_/TV_Remote_Sim_old_${next}_}"
+            done
+          done
+          if [ "$OLDEST" -ge 1 ]; then
+            for f in TV_Remote_Sim_new_*.apk; do
+              [ -e "$f" ] && mv "$f" "${f/TV_Remote_Sim_new_/TV_Remote_Sim_old_1_}"
+            done
+          fi
+
+          cp "../../app/build/outputs/apk/debug/app-debug.apk" "TV_Remote_Sim_new_${DT}.apk"
+          cd ..
+
+          git checkout --orphan temp_clean_branch
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.${HOST}"
+          git add -A
+          git commit -m "Update ${TARGET_FOLDER}: TV_Remote_Sim_new_${DT}.apk"
+          git push -f origin temp_clean_branch:"$PRIVATE_BRANCH"
