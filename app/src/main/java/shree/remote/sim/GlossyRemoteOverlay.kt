@@ -1,5 +1,5 @@
 // Important instructions:
-// - Render an opaque, glossy-shine floating TV remote with two modes: D-Pad Buttons and Gesture Trackpad.
+// - Render a glossy-shine floating TV remote with configurable opacity, D-Pad Buttons mode, and Gesture Trackpad mode.
 // - Support smooth dragging anywhere on screen and dispatch Up, Down, Left, Right, OK, Long-OK, and Back actions.
 
 package shree.remote.sim
@@ -45,7 +45,6 @@ class GlossyRemoteOverlay(
 
     fun isShowing(): Boolean = rootView != null
 
-    // Attaches or updates the opaque glossy floating overlay window.
     fun show() {
         hide()
         val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -77,7 +76,6 @@ class GlossyRemoteOverlay(
         }
     }
 
-    // Removes the floating overlay cleanly from WindowManager.
     fun hide() {
         rootView?.let { v ->
             try { wm.removeView(v) } catch (_: Exception) {}
@@ -86,7 +84,6 @@ class GlossyRemoteOverlay(
         params = null
     }
 
-    // Builds the opaque glossy-shine remote body with drag bar, mode switch, and D-Pad or Gesture pad.
     private fun buildGlossyShell(): View {
         val shell = object : LinearLayout(ctx) {
             private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -104,7 +101,6 @@ class GlossyRemoteOverlay(
                 val r = dpF(24f)
 
                 rect.set(half, half, w - half, h - half)
-                // Opaque rich metallic obsidian-indigo gradient fill (not transparent).
                 fillPaint.shader = LinearGradient(
                     0f, 0f, w * 0.4f, h,
                     intArrayOf(Color.rgb(24, 34, 68), Color.rgb(12, 17, 36)),
@@ -112,7 +108,6 @@ class GlossyRemoteOverlay(
                 )
                 canvas.drawRoundRect(rect, r, r, fillPaint)
 
-                // Top glossy specular reflection band.
                 sheenRect.set(stroke, stroke, w - stroke, h * 0.36f)
                 sheenPaint.shader = LinearGradient(
                     0f, 0f, 0f, h * 0.36f,
@@ -121,7 +116,6 @@ class GlossyRemoteOverlay(
                 )
                 canvas.drawRoundRect(sheenRect, r, r, sheenPaint)
 
-                // Luminous cyan-violet-white outer rim.
                 rimPaint.strokeWidth = stroke
                 rimPaint.shader = LinearGradient(
                     0f, 0f, w, h,
@@ -135,10 +129,10 @@ class GlossyRemoteOverlay(
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setWillNotDraw(false)
+            alpha = prefs.overlayOpacity / 100f
             setPadding(dp(12), dp(10), dp(12), dp(12))
         }
 
-        // Top draggable header bar with mode switcher and close button.
         val topHandle = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -151,33 +145,20 @@ class GlossyRemoteOverlay(
             setTextColor(Color.rgb(185, 220, 255))
         }
         val isGesture = prefs.overlayMode == RemotePrefs.MODE_GESTURE
-        val modeBadge = makeGlossyChip(if (isGesture) "Swipe" else "D-Pad", accent = true) {
-            onToggleMode()
-        }
-        val closeChip = makeGlossyChip("✕", accent = false) {
-            onHideOverlay()
-        }
+        val modeBadge = makeGlossyChip(if (isGesture) "Swipe" else "D-Pad", accent = true) { onToggleMode() }
+        val closeChip = makeGlossyChip("✕", accent = false) { onHideOverlay() }
         topHandle.addView(dragGrip, LinearLayout.LayoutParams(0, -2, 1f))
         topHandle.addView(modeBadge, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(6) })
         topHandle.addView(closeChip, LinearLayout.LayoutParams(-2, -2))
         attachDragListener(topHandle)
         shell.addView(topHandle, LinearLayout.LayoutParams(-1, -2))
 
-        if (isGesture) {
-            shell.addView(buildGlossyGesturePad())
-        } else {
-            shell.addView(buildGlossyDpadButtons())
-        }
+        if (isGesture) shell.addView(buildGlossyGesturePad()) else shell.addView(buildGlossyDpadButtons())
 
-        // Bottom Back pill button.
-        val backBtn = makeGlossyKey("‹  BACK", dp(156), dp(36), primary = false) {
-            onAction(RemoteAction.BACK)
-        }
+        val backBtn = makeGlossyKey("‹  BACK", dp(156), dp(36), primary = false) { onAction(RemoteAction.BACK) }
         shell.addView(backBtn, LinearLayout.LayoutParams(dp(156), dp(36)).apply { topMargin = dp(8) })
         return shell
     }
-
-    // Builds tactile glossy D-Pad directional buttons + OK (Tap & Long-Press).
     private fun buildGlossyDpadButtons(): View {
         val box = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -212,7 +193,6 @@ class GlossyRemoteOverlay(
         return box
     }
 
-    // Builds an opaque glossy-shine touch trackpad supporting swipe directions, tap OK, and long-press OK.
     private fun buildGlossyGesturePad(): View {
         val padSize = dp(156)
         val swipeMin = ViewConfiguration.get(ctx).scaledTouchSlop * 2.0f
@@ -244,98 +224,84 @@ class GlossyRemoteOverlay(
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER
                 setTextColor(Color.rgb(215, 236, 255))
-}, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
-setOnTouchListener { _, ev ->
-when (ev.actionMasked) {
-MotionEvent.ACTION_DOWN -> {
-startX = ev.x
-startY = ev.y
-swiped = false
-}
-MotionEvent.ACTION_MOVE -> {
-if (!swiped) {
-val dx = ev.x - startX
-val dy = ev.y - startY
-if (abs(dx) >= swipeMin || abs(dy) >= swipeMin) {
-swiped = true
-val act = if (abs(dx) > abs(dy)) {
-if (dx > 0f) RemoteAction.RIGHT else RemoteAction.LEFT
-} else {
-if (dy > 0f) RemoteAction.DOWN else RemoteAction.UP
-}
-onAction(act)
-}
-}
-}
-}
-detector.onTouchEvent(ev)
-true
-}
-}.apply {
-layoutParams = LinearLayout.LayoutParams(padSize, padSize)
-}
-}
-private fun makeGlossyKey(label: String, w: Int, h: Int, primary: Boolean, onClick: () -> Unit): TextView =
-TextView(ctx).apply {
-text = label
-textSize = if (primary) 13f else 12f
-typeface = Typeface.DEFAULT_BOLD
-gravity = Gravity.CENTER
-setTextColor(Color.WHITE)
-background = GradientDrawable(
-GradientDrawable.Orientation.TOP_BOTTOM,
-if (primary) intArrayOf(Color.rgb(58, 152, 255), Color.rgb(32, 96, 218))
-else intArrayOf(Color.rgb(44, 62, 112), Color.rgb(24, 34, 68))
-).apply {
-cornerRadius = dpF(14f)
-setStroke(dp(1), if (primary) Color.WHITE else Color.argb(140, 175, 215, 255))
-}
-setOnClickListener { onClick() }
-}
-private fun makeGlossyChip(label: String, accent: Boolean, onClick: () -> Unit): TextView =
-TextView(ctx).apply {
-text = label
-textSize = 9.5f
-typeface = Typeface.DEFAULT_BOLD
-setTextColor(Color.WHITE)
-setPadding(dp(8), dp(3), dp(8), dp(3))
-background = GradientDrawable().apply {
-setColor(if (accent) Color.rgb(48, 132, 238) else Color.rgb(58, 42, 76))
-cornerRadius = dpF(10f)
-setStroke(dp(1), Color.argb(140, 255, 255, 255))
-}
-setOnClickListener { onClick() }
-}
-// Allows smooth dragging of the floating overlay window across the screen.
-private fun attachDragListener(handle: View) {
-var initX = 0
-var initY = 0
-var touchX = 0f
-var touchY = 0f
-handle.setOnTouchListener { , event ->
-val lp = params ?: return@setOnTouchListener false
-val rv = rootView ?: return@setOnTouchListener false
-when (event.actionMasked) {
-MotionEvent.ACTION_DOWN -> {
-initX = lp.x
-initY = lp.y
-touchX = event.rawX
-touchY = event.rawY
-true
-}
-MotionEvent.ACTION_MOVE -> {
-lp.x = initX + (event.rawX - touchX).toInt()
-lp.y = initY + (event.rawY - touchY).toInt()
-try { wm.updateViewLayout(rv, lp) } catch (: Exception) {}
-true
-}
-MotionEvent.ACTION_UP -> {
-prefs.overlayX = lp.x
-prefs.overlayY = lp.y
-true
-}
-else -> false
-}
-}
-}
+            }, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+
+            setOnTouchListener { _, ev ->
+                when (ev.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> { startX = ev.x; startY = ev.y; swiped = false }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (!swiped) {
+                            val dx = ev.x - startX
+                            val dy = ev.y - startY
+                            if (abs(dx) >= swipeMin || abs(dy) >= swipeMin) {
+                                swiped = true
+                                val act = if (abs(dx) > abs(dy)) {
+                                    if (dx > 0f) RemoteAction.RIGHT else RemoteAction.LEFT
+                                } else {
+                                    if (dy > 0f) RemoteAction.DOWN else RemoteAction.UP
+                                }
+                                onAction(act)
+                            }
+                        }
+                    }
+                }
+                detector.onTouchEvent(ev)
+                true
+            }
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(padSize, padSize)
+        }
+    }
+
+    private fun makeGlossyKey(label: String, w: Int, h: Int, primary: Boolean, onClick: () -> Unit): TextView =
+        TextView(ctx).apply {
+            text = label
+            textSize = if (primary) 13f else 12f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                if (primary) intArrayOf(Color.rgb(58, 152, 255), Color.rgb(32, 96, 218))
+                else intArrayOf(Color.rgb(44, 62, 112), Color.rgb(24, 34, 68))
+            ).apply {
+                cornerRadius = dpF(14f)
+                setStroke(dp(1), if (primary) Color.WHITE else Color.argb(140, 175, 215, 255))
+            }
+            setOnClickListener { onClick() }
+        }
+
+    private fun makeGlossyChip(label: String, accent: Boolean, onClick: () -> Unit): TextView =
+        TextView(ctx).apply {
+            text = label
+            textSize = 9.5f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            setPadding(dp(8), dp(3), dp(8), dp(3))
+            background = GradientDrawable().apply {
+                setColor(if (accent) Color.rgb(48, 132, 238) else Color.rgb(58, 42, 76))
+                cornerRadius = dpF(10f)
+                setStroke(dp(1), Color.argb(140, 255, 255, 255))
+            }
+            setOnClickListener { onClick() }
+        }
+
+    private fun attachDragListener(handle: View) {
+        var initX = 0; var initY = 0; var touchX = 0f; var touchY = 0f
+        handle.setOnTouchListener { _, event ->
+            val lp = params ?: return@setOnTouchListener false
+            val rv = rootView ?: return@setOnTouchListener false
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { initX = lp.x; initY = lp.y; touchX = event.rawX; touchY = event.rawY; true }
+                MotionEvent.ACTION_MOVE -> {
+                    lp.x = initX + (event.rawX - touchX).toInt()
+                    lp.y = initY + (event.rawY - touchY).toInt()
+                    try { wm.updateViewLayout(rv, lp) } catch (_: Exception) {}
+                    true
+                }
+                MotionEvent.ACTION_UP -> { prefs.overlayX = lp.x; prefs.overlayY = lp.y; true }
+                else -> false
+            }
+        }
+    }
 }
