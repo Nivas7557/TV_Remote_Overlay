@@ -24,8 +24,8 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # Restore persistent debug keystore from private repo without overwriting other folders.
-      - name: Restore or Initialize Persistent Debug Keystore
+      # Clone private repo once; restore existing keystore or generate a new one to be committed with the APK.
+      - name: Clone Private Storage & Restore Keystore
         env:
           PAT_TOKEN: ${{ secrets.TESTER_REPO_TOKEN }}
           PRIVATE_REPO: 'Nivas7557/My_Generated_Apks'
@@ -35,30 +35,27 @@ jobs:
           HOST="github.com"
           REPO_URL="https://x-access-token:${PAT_TOKEN}@${HOST}/${PRIVATE_REPO}.git"
 
-          if git ls-remote --exit-code --heads "$REPO_URL" "$PRIVATE_BRANCH" >/dev/null 2>&1; then
-            git clone --depth 1 --branch "$PRIVATE_BRANCH" "$REPO_URL" _signing_sync
+          if git clone --depth 1 --branch "$PRIVATE_BRANCH" "$REPO_URL" private_apk_repo 2>/dev/null; then
+            echo "Cloned existing private storage repo."
           else
-            mkdir _signing_sync && cd _signing_sync && git init && git remote add origin "$REPO_URL" && git checkout -b "$PRIVATE_BRANCH" && cd ..
+            mkdir -p private_apk_repo
+            cd private_apk_repo
+            git init
+            git remote add origin "$REPO_URL"
+            git checkout -b "$PRIVATE_BRANCH"
+            cd ..
           fi
 
-          if [ -s _signing_sync/_signing/tv_remote_sim_debug.keystore ]; then
-            cp _signing_sync/_signing/tv_remote_sim_debug.keystore ~/.android/debug.keystore
+          if [ -s private_apk_repo/_signing/tv_remote_sim_debug.keystore ]; then
+            cp private_apk_repo/_signing/tv_remote_sim_debug.keystore ~/.android/debug.keystore
           else
             keytool -genkey -v -keystore ~/.android/debug.keystore \
               -storepass android -alias androiddebugkey -keypass android \
               -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=TVRemoteSim,O=Android,C=IN"
-            mkdir -p _signing_sync/_signing
-            cp ~/.android/debug.keystore _signing_sync/_signing/tv_remote_sim_debug.keystore
-            cd _signing_sync
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.${HOST}"
-            git add _signing/tv_remote_sim_debug.keystore
-            git commit -m "chore: save tv_remote_sim persistent keystore"
-            git push origin "$PRIVATE_BRANCH"
-            cd ..
+            mkdir -p private_apk_repo/_signing
+            cp ~/.android/debug.keystore private_apk_repo/_signing/tv_remote_sim_debug.keystore
           fi
-          rm -rf _signing_sync
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
@@ -86,7 +83,7 @@ jobs:
             "$AAPT2" dump badging "$APK_PATH" > /dev/null
           fi
 
-      # Rotate builds ONLY inside TARGET_FOLDER while keeping all other folders in private repo intact.
+      # Rotate builds ONLY inside TARGET_FOLDER and push all existing folders + keystore cleanly.
       - name: Rotate and Push APK to Private Storage Repo
         env:
           MAX_BUILDS: 5
@@ -100,11 +97,8 @@ jobs:
           SAFE_BRANCH=$(echo "$BRANCH_NAME" | tr '/' '_')
           TARGET_FOLDER="${REPO_NAME}_${SAFE_BRANCH}"
           HOST="github.com"
-          REPO_URL="https://x-access-token:${PAT_TOKEN}@${HOST}/${PRIVATE_REPO}.git"
 
-          git clone --depth 1 --branch "$PRIVATE_BRANCH" "$REPO_URL" private_apk_repo
           cd private_apk_repo
-
           mkdir -p "$TARGET_FOLDER"
           cd "$TARGET_FOLDER"
 
