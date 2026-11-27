@@ -1,59 +1,30 @@
 // Important instructions:
-// - Persist simulator toggle state, overlay mode (dpad vs gesture), target app package, opacity, and position.
+// - Provide a native Android Quick Settings Tile in the notification shade to toggle the simulator ON or OFF anytime.
 
 package shree.remote.sim
 
-import android.content.Context
-import android.content.Intent
+import android.service.quicksettings.Tile
+import android.service.quicksettings.TileService
 
-class RemotePrefs(private val ctx: Context) {
+class RemoteQuickTileService : TileService() {
 
-    companion object {
-        private const val PREF_NAME = "tv_remote_sim_prefs"
-        const val MODE_DPAD = "dpad"
-        const val MODE_GESTURE = "gesture"
-        const val ACTION_STATE_CHANGED = "shree.remote.sim.ACTION_STATE_CHANGED"
+    override fun onStartListening() {
+        super.onStartListening()
+        syncTileVisuals()
     }
 
-    private val prefs = ctx.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    override fun onClick() {
+        super.onClick()
+        val prefs = RemotePrefs(this)
+        prefs.isSimulatorEnabled = !prefs.isSimulatorEnabled
+        syncTileVisuals()
+    }
 
-    var isSimulatorEnabled: Boolean
-        get() = prefs.getBoolean("sim_enabled", true)
-        set(value) {
-            prefs.edit().putBoolean("sim_enabled", value).apply()
-            notifyStateChanged()
-        }
-
-    var overlayMode: String
-        get() = prefs.getString("overlay_mode", MODE_DPAD) ?: MODE_DPAD
-        set(value) {
-            prefs.edit().putString("overlay_mode", value).apply()
-            notifyStateChanged()
-        }
-
-    var targetPackage: String
-        get() = prefs.getString("target_pkg", "shree.tvhome") ?: "shree.tvhome"
-        set(value) {
-            prefs.edit().putString("target_pkg", value).apply()
-            notifyStateChanged()
-        }
-
-    var overlayOpacity: Int
-        get() = prefs.getInt("overlay_opacity", 100).coerceIn(35, 100)
-        set(value) {
-            prefs.edit().putInt("overlay_opacity", value.coerceIn(35, 100)).apply()
-            notifyStateChanged()
-        }
-
-    var overlayX: Int
-        get() = prefs.getInt("overlay_x", 60)
-        set(value) = prefs.edit().putInt("overlay_x", value).apply()
-
-    var overlayY: Int
-        get() = prefs.getInt("overlay_y", 220)
-        set(value) = prefs.edit().putInt("overlay_y", value).apply()
-
-    private fun notifyStateChanged() {
-        ctx.sendBroadcast(Intent(ACTION_STATE_CHANGED).setPackage(ctx.packageName))
+    private fun syncTileVisuals() {
+        val tile = qsTile ?: return
+        val enabled = RemotePrefs(this).isSimulatorEnabled
+        tile.state = if (enabled) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
+        tile.label = if (enabled) "TV Remote: ON" else "TV Remote: OFF"
+        tile.updateTile()
     }
 }
