@@ -1,0 +1,51 @@
+// Important instructions:
+// - Keep dependencies empty and enable R8 shrinking so the standalone simulator APK stays ~300 KB.
+// - Derive monotonic versionCode and 0.X.Y versionName automatically from GitHub Actions run number.
+
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+def runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+def verMajor = runNumber.intdiv(100)
+def verMinor = (runNumber.intdiv(10)) % 10
+def verPatch = runNumber % 10
+def autoVersionName = "${verMajor}.${verMinor}.${verPatch}"
+
+android {
+    namespace 'shree.remote.sim'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "shree.remote.sim"
+        minSdk 24
+        targetSdk 34
+        versionCode runNumber
+        versionName autoVersionName
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+dependencies {
+}
