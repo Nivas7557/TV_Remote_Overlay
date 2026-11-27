@@ -1,5 +1,5 @@
 // Important instructions:
-// - Show the glossy remote overlay ONLY when the simulator is enabled AND the selected target app is in the foreground.
+// - Show the glossy remote overlay ONLY when enabled AND the selected target app is in the foreground.
 // - Provide a persistent notification with an instant ON/OFF toggle action in the system notification shade.
 // - Execute spatial focus moves, click (OK), long-click (Menu), and Back actions on the target app window.
 
@@ -52,15 +52,9 @@ class RemoteAccessibilityService : AccessibilityService() {
             prefs = prefs,
             onAction = ::performRemoteAction,
             onToggleMode = {
-                prefs.overlayMode = if (prefs.overlayMode == RemotePrefs.MODE_DPAD) {
-                    RemotePrefs.MODE_GESTURE
-                } else {
-                    RemotePrefs.MODE_DPAD
-                }
+                prefs.overlayMode = if (prefs.overlayMode == RemotePrefs.MODE_DPAD) RemotePrefs.MODE_GESTURE else RemotePrefs.MODE_DPAD
             },
-            onHideOverlay = {
-                prefs.isSimulatorEnabled = false
-            }
+            onHideOverlay = { prefs.isSimulatorEnabled = false }
         )
 
         val filter = IntentFilter().apply {
@@ -96,7 +90,6 @@ class RemoteAccessibilityService : AccessibilityService() {
         overlay.hide()
     }
 
-    // Shows the overlay exclusively when enabled, permitted, and matching the user's selected target app.
     private fun evaluateOverlayVisibility(forceRebuild: Boolean) {
         if (!Settings.canDrawOverlays(this)) {
             overlay.hide()
@@ -110,8 +103,6 @@ class RemoteAccessibilityService : AccessibilityService() {
             overlay.hide()
         }
     }
-
-    // Posts a control notification in the shade so the user can toggle the simulator ON/OFF anytime.
     private fun updateNotification() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -141,17 +132,12 @@ class RemoteAccessibilityService : AccessibilityService() {
             .setContentText("Target: ${prefs.targetPackage} • Tap action to toggle")
             .setContentIntent(openAppPi)
             .setOngoing(true)
-            .addAction(
-                Notification.Action.Builder(
-                    null, if (enabled) "Turn OFF" else "Turn ON", togglePi
-                ).build()
-            )
+            .addAction(Notification.Action.Builder(null, if (enabled) "Turn OFF" else "Turn ON", togglePi).build())
             .build()
 
         nm.notify(NOTIF_ID, notif)
     }
 
-    // Performs genuine directional focus navigation, OK click, Long-OK menu, or Back on the active app window.
     private fun performRemoteAction(action: GlossyRemoteOverlay.RemoteAction) {
         if (action == GlossyRemoteOverlay.RemoteAction.BACK) {
             performGlobalAction(GLOBAL_ACTION_BACK)
@@ -163,12 +149,8 @@ class RemoteAccessibilityService : AccessibilityService() {
             ?: root.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
 
         when (action) {
-            GlossyRemoteOverlay.RemoteAction.OK -> {
-                focused?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            }
-            GlossyRemoteOverlay.RemoteAction.LONG_OK -> {
-                focused?.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
-            }
+            GlossyRemoteOverlay.RemoteAction.OK -> focused?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            GlossyRemoteOverlay.RemoteAction.LONG_OK -> focused?.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
             GlossyRemoteOverlay.RemoteAction.LEFT -> moveSpatialFocus(root, focused, View.FOCUS_LEFT)
             GlossyRemoteOverlay.RemoteAction.RIGHT -> moveSpatialFocus(root, focused, View.FOCUS_RIGHT)
             GlossyRemoteOverlay.RemoteAction.UP -> moveSpatialFocus(root, focused, View.FOCUS_UP)
@@ -177,7 +159,6 @@ class RemoteAccessibilityService : AccessibilityService() {
         }
     }
 
-    // Finds the nearest focusable AccessibilityNodeInfo in the requested direction and focuses it.
     private fun moveSpatialFocus(root: AccessibilityNodeInfo, current: AccessibilityNodeInfo?, direction: Int) {
         val candidates = ArrayList<AccessibilityNodeInfo>()
         collectFocusableNodes(root, candidates)
@@ -230,9 +211,7 @@ class RemoteAccessibilityService : AccessibilityService() {
 
     private fun collectFocusableNodes(node: AccessibilityNodeInfo?, out: MutableList<AccessibilityNodeInfo>) {
         if (node == null || !node.isVisibleToUser) return
-        if (node.isFocusable && node.isEnabled) {
-            out.add(node)
-        }
+        if (node.isFocusable && node.isEnabled) out.add(node)
         for (i in 0 until node.childCount) {
             collectFocusableNodes(node.getChild(i), out)
         }
