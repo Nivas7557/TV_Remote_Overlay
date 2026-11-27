@@ -4,5 +4,5 @@
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows|flagReportViewIds"
     android:canRetrieveWindowContent="true"
-    android:description="TV Remote D-Pad &amp; Gesture Simulator Engine"
+    android:description="@string/service_desc"
     android:notificationTimeout="40" />
