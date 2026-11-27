@@ -138,10 +138,20 @@ class RemoteAccessibilityService : AccessibilityService() {
         nm.notify(NOTIF_ID, notif)
     }
 
+       // Dispatches authentic D-Pad key broadcasts to target TV apps and falls back to Accessibility focus for system apps.
     private fun performRemoteAction(action: GlossyRemoteOverlay.RemoteAction) {
         if (action == GlossyRemoteOverlay.RemoteAction.BACK) {
             performGlobalAction(GLOBAL_ACTION_BACK)
             return
+        }
+
+        val targetPkg = prefs.targetPackage
+        if (targetPkg.isNotEmpty()) {
+            val keyIntent = Intent("shree.remote.sim.ACTION_REMOTE_KEY").apply {
+                setPackage(targetPkg)
+                putExtra("remote_action", action.name)
+            }
+            sendBroadcast(keyIntent)
         }
 
         val root = rootInActiveWindow ?: return
@@ -149,8 +159,12 @@ class RemoteAccessibilityService : AccessibilityService() {
             ?: root.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
 
         when (action) {
-            GlossyRemoteOverlay.RemoteAction.OK -> focused?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            GlossyRemoteOverlay.RemoteAction.LONG_OK -> focused?.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
+            GlossyRemoteOverlay.RemoteAction.OK -> {
+                focused?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            }
+            GlossyRemoteOverlay.RemoteAction.LONG_OK -> {
+                focused?.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
+            }
             GlossyRemoteOverlay.RemoteAction.LEFT -> moveSpatialFocus(root, focused, View.FOCUS_LEFT)
             GlossyRemoteOverlay.RemoteAction.RIGHT -> moveSpatialFocus(root, focused, View.FOCUS_RIGHT)
             GlossyRemoteOverlay.RemoteAction.UP -> moveSpatialFocus(root, focused, View.FOCUS_UP)
@@ -159,13 +173,14 @@ class RemoteAccessibilityService : AccessibilityService() {
         }
     }
 
+    // Finds the nearest focusable node in the requested direction and applies both input and accessibility focus.
     private fun moveSpatialFocus(root: AccessibilityNodeInfo, current: AccessibilityNodeInfo?, direction: Int) {
         val candidates = ArrayList<AccessibilityNodeInfo>()
         collectFocusableNodes(root, candidates)
         if (candidates.isEmpty()) return
 
         if (current == null) {
-            candidates.first().performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            focusNode(candidates.first())
             return
         }
 
@@ -206,7 +221,12 @@ class RemoteAccessibilityService : AccessibilityService() {
             }
         }
 
-        bestNode?.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        bestNode?.let { focusNode(it) }
+    }
+
+    private fun focusNode(node: AccessibilityNodeInfo) {
+        node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        node.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
     }
 
     private fun collectFocusableNodes(node: AccessibilityNodeInfo?, out: MutableList<AccessibilityNodeInfo>) {
